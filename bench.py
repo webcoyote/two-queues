@@ -3,8 +3,24 @@
 from os import mkdir
 from os.path import join
 from multiprocessing import cpu_count
-from subprocess import Popen, check_output, PIPE
 from sys import stdout
+import subprocess
+
+# Add check_output; CentOS 6.3 uses Python 2.6, which doesn't have this
+if "check_output" not in dir( subprocess ): # duck punch it in!
+    def f(*popenargs, **kwargs):
+        if 'stdout' in kwargs:
+            raise ValueError('stdout argument not allowed, it will be overridden.')
+        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+        output, unused_err = process.communicate()
+        retcode = process.poll()
+        if retcode:
+            cmd = kwargs.get("args")
+            if cmd is None:
+                cmd = popenargs[0]
+            raise subprocess.CalledProcessError(retcode, cmd)
+        return output
+    subprocess.check_output = f
 
 
 def popen_args(filename, *args):
@@ -25,7 +41,7 @@ def run_clients(lang, *args):
     median messsages per second for each.
     """
     if "--redis" not in args:
-        broker = Popen(popen_args("run_broker.%s" % lang), stderr=PIPE)
+        broker = subprocess.Popen(popen_args("run_broker.%s" % lang), stderr=subprocess.PIPE)
     args = popen_args("test_client.%s" % lang, *args)
     results = []
     num_runs = cpu_count() * 2
@@ -34,7 +50,7 @@ def run_clients(lang, *args):
         bar = ("#" * clients).ljust(num_runs)
         stdout.write("\r[%s] %s/%s " % (bar, clients, num_runs))
         stdout.flush()
-        out = check_output(args + ["--num-clients=%s" % clients], stderr=PIPE)
+        out = subprocess.check_output(args + ["--num-clients=%s" % clients], stderr=subprocess.PIPE)
         results.append(out.split(" ")[0].strip())
     stdout.write("\n")
     if "--redis" not in args:
@@ -82,7 +98,7 @@ for name, args in runs.items():
 # Generate graphs.
 with open("plot.p", "r") as f:
     plotfile = f.read()
-line = '"%s.dat" using ($0+1):1 with lines title "%s" lw 2 lt rgb "%s"'
+line = '"output/%s.dat" using ($0+1):1 with lines title "%s" lw 2 lt rgb "%s"'
 for name, names in plots.items():
     name = output_path(name)
     with open(output_path(names[0] + ".dat"), "r") as f:
@@ -91,4 +107,4 @@ for name, names in plots.items():
         lines = ", ".join([line % (l, l.replace("_", " "), colours[l])
                            for l in names])
         f.write(plotfile % {"name": name, "lines": lines, "clients": clients})
-    Popen(["gnuplot", name + ".p"], stderr=PIPE)
+    subprocess.Popen(["gnuplot", name + ".p"], stderr=subprocess.PIPE)
