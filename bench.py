@@ -27,12 +27,16 @@ def popen_args(filename, *args):
     """
     Returns the initial popen args for a given Python or Go file.
     """
-    args = [filename, "--quiet"] + list(args)
-    if filename.split(".")[-1] == "py":
-        return ["python"] + args
+    args = ["--quiet"] + list(args)
+    lang = filename.split(".")[-1]
+    if lang == "py":
+        return ["python", filename] + list(args)
+    elif lang == "go":
+        return ["go", "run", filename] + list(args)
+    elif lang == "exs":
+        return ["mix", "run"] + list(args)
     else:
-        return ["go", "run"] + list(args)
-
+        raise NameError('Unknown extension', lang)
 
 def run_clients(lang, *args):
     """
@@ -40,25 +44,32 @@ def run_clients(lang, *args):
     from 1 to cpus * 2 as the number of clients, returning the
     median messsages per second for each.
     """
-    if "--redis" not in args:
+    cmd = popen_args("test_client.%s" % lang, *args)
+    print " ".join(cmd)
+
+    broker = None
+    if lang == "exs":
+        subprocess.check_output(["mix", "compile"], stderr=subprocess.PIPE)
+    elif "--redis" not in args:
         broker = subprocess.Popen(popen_args("run_broker.%s" % lang), stderr=subprocess.PIPE)
-    args = popen_args("test_client.%s" % lang, *args)
+
     results = []
     num_runs = cpu_count() * 2
-    print " ".join(args)
     for clients in range(1, num_runs + 1):
         bar = ("#" * clients).ljust(num_runs)
         stdout.write("\r[%s] %s/%s " % (bar, clients, num_runs))
         stdout.flush()
-        out = subprocess.check_output(args + ["--num-clients=%s" % clients], stderr=subprocess.PIPE)
+        out = subprocess.check_output(cmd + ["--num-clients=%s" % clients] + ["--num-seconds=10"], stderr=subprocess.PIPE)
         results.append(out.split(" ")[0].strip())
     stdout.write("\n")
-    if "--redis" not in args:
+
+    if broker is not None:
         broker.kill()
     return results
 
 # All test_client runs and their cli args.
 runs = {
+    "elixir": ["exs"],
     "py_redis": ["py", "--redis", "--unbuffered"],
     "py_redis_buffered": ["py", "--redis"],
     "py_zmq": ["py"],
@@ -68,6 +79,7 @@ runs = {
 
 # Consistent graph colours defined for each of the runs.
 colours = {
+    "elixir": "cyan",
     "py_redis": "red",
     "py_redis_buffered": "green",
     "py_zmq": "blue",
@@ -80,7 +92,7 @@ plots = {
     "two-queues-1": ["py_zmq", "py_redis"],
     "two-queues-2": ["py_zmq", "py_redis", "py_redis_buffered"],
     "two-queues-3": ["py_zmq", "py_redis", "py_redis_buffered",
-                     "go_zmq", "go_redis"],
+                     "go_zmq", "go_redis", "elixir"],
 }
 
 # Store all results in an output directory.

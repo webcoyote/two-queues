@@ -31,3 +31,5 @@ rm go1.0.3.linux-amd64.tar.gz
 go get github.com/garyburd/redigo/redis
 go get github.com/alecthomas/gozmq
 
+export PATH=$PATH:/usr/local/go/bin
+
