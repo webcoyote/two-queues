@@ -140,7 +140,8 @@ defmodule Publisher do
   def handle_info(:timeout, state) do
     args = pubstate(state, :args)
     msgsize = Helpers.get_int(args, :message_size)
-    broadcast(pubstate(state, :subscribers), msgsize)
+    message = { :message, String.duplicate("a", msgsize) }
+    broadcast(pubstate(state, :subscribers), message)
     { :noreply, state, 0 }  # timeout again immediately
   end
 
@@ -150,12 +151,11 @@ defmodule Publisher do
     { :reply, :ok, pubstate(state, subscribers: subscribers), 0 } # timeout again immediately
   end
 
-  defp broadcast([], _msgsize) do
+  defp broadcast([], _message) do
   end
-
-  defp broadcast(subscribers, msgsize) do
-    hd(subscribers) <- { :message, String.duplicate("a", msgsize) }
-    broadcast tl(subscribers), msgsize
+  defp broadcast(subscribers, message) do
+    hd(subscribers) <- message
+    broadcast tl(subscribers), message
   end
 
 end
