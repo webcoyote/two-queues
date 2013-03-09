@@ -27,10 +27,9 @@ defmodule App do
     messages = Metrics.get_messages
 
     # Get the median messages per second
-    messages = :lists.sort messages
+    messages = Enum.sort messages
     samples  = length(messages)
-    median = :lists.nth(div(samples, 2) + 1, messages)
-    # ^^^ one-based; not cheating to get a better sample
+    median = Enum.at!(messages, div(samples, 2))
 
     IO.puts "#{median} median msg/sec"
 
@@ -46,8 +45,6 @@ defmodule App do
     run_workers(task, count - 1, [pid | acc])
   end
 
-  # TODO: make a higher-level abstraction on OptionParser like
-  # Ruby Trollop gem to avoid all this hardcoded stuff
   defp parse_cmdline do
     # Print command line
     #IO.puts "args:"
@@ -64,32 +61,11 @@ defmodule App do
       ]
     )
 
-    # Verify arguments
-    Enum.each args, fn(arg) ->
-      { key, val } = arg
-      case key do
-        :redis -> :ok
-        :unbuffered -> :ok
-        :quiet -> :ok
-        :host -> :ok
-        :verbose -> :ok
-
-        # Note the dash-to-underscore conversion by OptionParser:
-        # ex: --num-clients => :"num_clients"
-        :"num_clients" -> args = Dict.put args, key, parse_int(key, val)
-        :"num_seconds" -> args = Dict.put args, key, parse_int(key, val)
-        :"num_channels" -> args = Dict.put args, key, parse_int(key, val)
-        :"message_size" -> args = Dict.put args, key, parse_int(key, val)
-
-        key -> bad_arg :"Unknown_argument", key, ""
-      end
-    end
-
     # Set default values
-    args = Dict.put_new args, :"num_clients", default_num_clients
-    args = Dict.put_new args, :"num_seconds", 10
-    args = Dict.put_new args, :"num_channels", 50
-    args = Dict.put_new args, :"message_size", 20
+    args = Dict.put_new args, :num_clients, default_num_clients
+    args = Dict.put_new args, :num_seconds, 10
+    args = Dict.put_new args, :num_channels, 50
+    args = Dict.put_new args, :message_size, 20
 
     # Print arguments
     if Dict.get(args, :verbose, false) do
@@ -107,22 +83,10 @@ defmodule App do
     max(1, div(Kernel.length(cpus), 2))
   end
 
-  defp parse_int(key, val) do
-    if Regex.match?(%r/\A[1-9][0-9]*\z/, val) do
-      binary_to_integer(val)
-    else
-      bad_arg(:"Invalid number", key, val)
-    end
-  end
-
-  def bad_arg(error, key, val) do
-    IO.puts :stderr, "#{error}: '#{key}' #{val}"
-    :erlang.error error
-  end
-
 end
 
 defmodule Publisher do
+  use GenServer.Behaviour
 
   defrecordp :pubstate, [args: nil, subscribers: nil]
 
@@ -161,6 +125,7 @@ defmodule Publisher do
 end
 
 defmodule Subcriber do
+  use GenServer.Behaviour
 
   defrecordp :substate, [time: nil, messages: 0, quiet: false]
 
